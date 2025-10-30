@@ -9,13 +9,20 @@ COUNTRY_API = "https://restcountries.com/v2/all?fields=name,capital,region,popul
 EXCHANGE_API = "https://open.er-api.com/v6/latest/USD"
 
 def fetch_and_cache_countries():
+    # Fetch countries list
     try:
-        countries_resp = requests.get(COUNTRY_API, timeout=10)
-        rates_resp = requests.get(EXCHANGE_API, timeout=10)
+        countries_resp = requests.get(COUNTRY_API, timeout=5)
         countries_resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        # explicit, so callers can return 503 with clear message
+        raise requests.exceptions.RequestException(f"Could not fetch countries: {e}")
+
+    # Fetch exchange rates
+    try:
+        rates_resp = requests.get(EXCHANGE_API, timeout=5)
         rates_resp.raise_for_status()
     except requests.exceptions.RequestException as e:
-        return {"error": "External data source unavailable", "details": str(e)}, 503
+        raise requests.exceptions.RequestException(f"Could not fetch exchange rates: {e}")
 
     countries_data = countries_resp.json()
     rates = rates_resp.json().get("rates", {})

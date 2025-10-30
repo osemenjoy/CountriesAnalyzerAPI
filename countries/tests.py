@@ -83,6 +83,7 @@ class CountriesAPITestCase(TestCase):
 		# not found
 		resp = self.client.get('/countries/NoSuchCountry')
 		self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+		self.assertIn('error', resp.json())
 
 	def test_delete_country_success_and_not_found(self):
 		resp = self.client.delete('/countries/Samplestan')
@@ -90,6 +91,7 @@ class CountriesAPITestCase(TestCase):
 		# subsequent delete should return 404
 		resp = self.client.delete('/countries/Samplestan')
 		self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+		self.assertIn('error', resp.json())
 
 	def test_status_view(self):
 		resp = self.client.get('/status')
@@ -156,10 +158,13 @@ class CountriesAPITestCase(TestCase):
 		resp = self.client.post('/countries/refresh')
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		self.assertIn('message', resp.json())
+		self.assertIn('message', resp.json())
 
 		# simulate external failure
-		mock_get.side_effect = Exception('network error')
+		# simulate external failure using RequestException which utils will propagate
+		import requests as _req
+		mock_get.side_effect = _req.exceptions.RequestException('network error')
 		resp = self.client.post('/countries/refresh')
-		# our view returns a tuple (error, 503) handled in view -> Response
 		self.assertEqual(resp.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+		self.assertIn('error', resp.json())
 
