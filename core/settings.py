@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -85,9 +86,11 @@ DATABASES = {
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT'),
         'OPTIONS': {
-            'ssl': {
-                'ca': '',  # Absolute path to the downloaded CA certificate
-            }
+            "ssl": {
+                "ca": os.path.join(BASE_DIR, "certs/ca.pem"),
+                # "cert": os.path.join(BASE_DIR, "certs/client-cert.pem"),
+                # "key": os.path.join(BASE_DIR, "certs/client-key.pem"),
+            },
         }
     }
 }
