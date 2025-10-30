@@ -86,7 +86,7 @@ DATABASES = {
         'PORT': config('DB_PORT'),
         'OPTIONS': {
             'ssl': {
-                'ca': config('DB_CA_CERT'),  # Absolute path to the downloaded CA certificate
+                'ca': '',  # Absolute path to the downloaded CA certificate
             }
         }
     }
