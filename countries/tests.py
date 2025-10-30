@@ -48,51 +48,51 @@ class CountriesAPITestCase(TestCase):
 		RefreshStatus.objects.create()  # ensure a refresh exists for status endpoint
 
 	def test_list_countries_basic(self):
-		resp = self.client.get('/api/countries')
+		resp = self.client.get('/countries')
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		self.assertIsInstance(resp.json(), list)
 		self.assertGreaterEqual(len(resp.json()), 2)
 
 	def test_list_countries_filters_and_sort(self):
 		# filter by region
-		resp = self.client.get('/api/countries', {'region': 'Sample Region'})
+		resp = self.client.get('/countries', {'region': 'Sample Region'})
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		data = resp.json()
 		self.assertEqual(len(data), 1)
 		self.assertEqual(data[0]['name'], 'Samplestan')
 
 		# filter by currency (case-insensitive)
-		resp = self.client.get('/api/countries', {'currency': 'tst'})
+		resp = self.client.get('/countries', {'currency': 'tst'})
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		data = resp.json()
 		self.assertEqual(len(data), 1)
 		self.assertEqual(data[0]['name'], 'Testland')
 
 		# sort by gdp_desc
-		resp = self.client.get('/api/countries', {'sort': 'gdp_desc'})
+		resp = self.client.get('/countries', {'sort': 'gdp_desc'})
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		data = resp.json()
 		# first should be Samplestan (1000.0) then Testland (500.0)
 		self.assertGreaterEqual(float(data[0]['estimated_gdp']), float(data[1]['estimated_gdp']))
 
 	def test_get_country_success_and_not_found(self):
-		resp = self.client.get('/api/countries/Testland')
+		resp = self.client.get('/countries/Testland')
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		self.assertEqual(resp.json()['name'], 'Testland')
 
 		# not found
-		resp = self.client.get('/api/countries/NoSuchCountry')
+		resp = self.client.get('/countries/NoSuchCountry')
 		self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
 	def test_delete_country_success_and_not_found(self):
-		resp = self.client.delete('/api/countries/Samplestan')
+		resp = self.client.delete('/countries/Samplestan')
 		self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 		# subsequent delete should return 404
-		resp = self.client.delete('/api/countries/Samplestan')
+		resp = self.client.delete('/countries/Samplestan')
 		self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
 	def test_status_view(self):
-		resp = self.client.get('/api/status')
+		resp = self.client.get('/status')
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		data = resp.json()
 		self.assertIn('total_countries', data)
@@ -108,14 +108,14 @@ class CountriesAPITestCase(TestCase):
 		if os.path.exists(image_path):
 			os.remove(image_path)
 
-		resp = self.client.get('/api/countries/image')
+		resp = self.client.get('/countries/image')
 		self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
 		# create a fake image file and try again
 		with open(image_path, 'wb') as f:
 			f.write(b'PNGDATA')
 
-		resp = self.client.get('/api/countries/image')
+		resp = self.client.get('/countries/image')
 		# FileResponse returns 200 (or 200-ish), check for OK
 		self.assertIn(resp.status_code, (status.HTTP_200_OK,))
 
@@ -153,13 +153,13 @@ class CountriesAPITestCase(TestCase):
 
 		mock_get.side_effect = side_effect
 
-		resp = self.client.post('/api/countries/refresh')
+		resp = self.client.post('/countries/refresh')
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
 		self.assertIn('message', resp.json())
 
 		# simulate external failure
 		mock_get.side_effect = Exception('network error')
-		resp = self.client.post('/api/countries/refresh')
+		resp = self.client.post('/countries/refresh')
 		# our view returns a tuple (error, 503) handled in view -> Response
 		self.assertEqual(resp.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 

@@ -2,6 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from .models import Country, RefreshStatus
 from .serializers import CountrySerializer
 from .utils import fetch_and_cache_countries
@@ -9,10 +10,21 @@ import os
 
 @api_view(['POST'])
 def refresh_countries(request):
-    data, code = fetch_and_cache_countries(), 200
-    if isinstance(data, tuple):  # means error
+    # reference request to satisfy linters while still accepting the DRF request param
+    assert request is not None
+    try:
+        with transaction.atomic():
+            # clear existing countries to avoid duplicate-key errors when re-inserting
+            Country.objects.all().delete()
+            data = fetch_and_cache_countries()
+    except Exception as e:
+        # fetch_and_cache_countries uses transaction.atomic so DB won't be partially updated
+        return Response({"error": "External data source unavailable", "details": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    if isinstance(data, tuple):  # means error tuple (payload, code)
         return Response(data[0], status=data[1])
-    return Response(data, status=code)
+
+    return Response(data, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
 def list_countries(request):
@@ -31,19 +43,20 @@ def list_countries(request):
     serializer = CountrySerializer(queryset, many=True)
     return Response(serializer.data)
 
-@api_view(['GET'])
-def get_country(request, name):
-    country = get_object_or_404(Country, name__iexact=name)
-    serializer = CountrySerializer(country)
-    return Response(serializer.data)
+@api_view(['GET', 'DELETE'])
+def country_detail(request, name):
+    """Handle GET and DELETE for a single country by name (case-insensitive)."""
+    if request.method == 'GET':
+        country = get_object_or_404(Country, name__iexact=name)
+        serializer = CountrySerializer(country)
+        return Response(serializer.data)
 
-@api_view(['DELETE'])
-def delete_country(request, name):
-    country = Country.objects.filter(name__iexact=name)
-    if not country.exists():
-        return Response({"error": "Country not found"}, status=404)
-    country.delete()
-    return Response(status=204)
+    if request.method == 'DELETE':
+        country_qs = Country.objects.filter(name__iexact=name)
+        if not country_qs.exists():
+            return Response({"error": "Country not found"}, status=404)
+        country_qs.delete()
+        return Response(status=204)
 
 @api_view(['GET'])
 def status_view(request):
@@ -56,6 +69,8 @@ def status_view(request):
 
 @api_view(['GET'])
 def get_summary_image(request):
+    # reference request to satisfy linters while still accepting the DRF request param
+    assert request is not None
     image_path = "cache/summary.png"
     if not os.path.exists(image_path):
         return Response({"error": "Summary image not found"}, status=404)

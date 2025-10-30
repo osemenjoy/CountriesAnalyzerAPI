@@ -3,6 +3,7 @@ from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from django.conf import settings
 from .models import Country, RefreshStatus
+from django.db import transaction
 
 COUNTRY_API = "https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies"
 EXCHANGE_API = "https://open.er-api.com/v6/latest/USD"
@@ -18,35 +19,58 @@ def fetch_and_cache_countries():
 
     countries_data = countries_resp.json()
     rates = rates_resp.json().get("rates", {})
+    # Persist changes atomically - if anything fails, rollback so we don't leave partial updates
+    try:
+        with transaction.atomic():
+            for data in countries_data:
+                currency_list = data.get("currencies") or []
+                currency_code = currency_list[0].get("code") if currency_list else None
+                population = data.get("population") or 0
 
-    for data in countries_data:
-        currency_list = data.get("currencies") or []
-        currency_code = currency_list[0].get("code") if currency_list else None
-        exchange_rate = rates.get(currency_code)
-        population = data.get("population") or 0
+                # currency handling per spec
+                if not currency_code:
+                    exchange_rate = None
+                    estimated_gdp = 0
+                else:
+                    exchange_rate = rates.get(currency_code)
+                    if exchange_rate is None:
+                        # currency exists but no rate found
+                        estimated_gdp = None
+                    else:
+                        random_val = random.randint(1000, 2000)
+                        estimated_gdp = (population * random_val) / exchange_rate
 
-        if exchange_rate:
-            random_val = random.randint(1000, 2000)
-            estimated_gdp = (population * random_val) / exchange_rate
-        else:
-            estimated_gdp = 0
+                name = data["name"]
+                attrs = {
+                    "name": name,
+                    "capital": data.get("capital"),
+                    "region": data.get("region"),
+                    "population": population,
+                    "currency_code": currency_code,
+                    "exchange_rate": exchange_rate,
+                    "estimated_gdp": estimated_gdp,
+                    "flag_url": data.get("flag"),
+                }
 
-        Country.objects.update_or_create(
-            name__iexact=data["name"],
-            defaults={
-                "name": data["name"],
-                "capital": data.get("capital"),
-                "region": data.get("region"),
-                "population": population,
-                "currency_code": currency_code,
-                "exchange_rate": exchange_rate,
-                "estimated_gdp": estimated_gdp,
-                "flag_url": data.get("flag"),
-            }
-        )
+                # match by name case-insensitively
+                existing = Country.objects.filter(name__iexact=name).first()
+                if existing:
+                    for k, v in attrs.items():
+                        setattr(existing, k, v)
+                    existing.save()
+                else:
+                    Country.objects.create(**attrs)
 
-    RefreshStatus.objects.update_or_create(id=1)
-    generate_summary_image()
+            # update or create global refresh status (auto_now will update timestamp)
+            RefreshStatus.objects.update_or_create(id=1, defaults={})
+
+            # generate the summary image after successful DB update
+            generate_summary_image()
+
+    except Exception:
+        # Re-raise so callers can decide how to respond; transaction.atomic will roll back
+        raise
+
     return {"message": "Countries refreshed successfully"}
 
 def generate_summary_image():
